@@ -153,8 +153,8 @@ export class WebRTCManager {
   sendFrame(annexBData: Buffer, isKeyFrame: boolean): void {
     if (this.peers.size === 0) return;
 
-    // Increment timestamp (90kHz clock, ~120fps = 750 ticks per frame)
-    this.frameTimestamp += 750;
+    // Increment timestamp (90kHz clock, ~60fps = 1500 ticks per frame)
+    this.frameTimestamp += 1500;
 
     // Parse Annex B NALUs (split by start codes)
     const nalus = parseAnnexB(annexBData);

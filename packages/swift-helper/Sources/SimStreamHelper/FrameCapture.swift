@@ -83,16 +83,16 @@ final class FrameCapture {
         capturedHeight = IOSurfaceGetHeight(surface)
         print("[capture] Framebuffer: \(capturedWidth)x\(capturedHeight) (direct IOSurface, zero-copy)")
 
-        // Start 120fps polling timer
+        // Start 60fps polling timer
         let timer = DispatchSource.makeTimerSource(queue: captureQueue)
-        timer.schedule(deadline: .now(), repeating: .milliseconds(8)) // ~120fps
+        timer.schedule(deadline: .now(), repeating: .milliseconds(16)) // ~60fps
         timer.setEventHandler { [weak self] in
             self?.pollFrame()
         }
         timer.resume()
         self.pollTimer = timer
 
-        print("[capture] 120fps IOSurface capture started")
+        print("[capture] 60fps IOSurface capture started")
     }
 
     private func pollFrame() {
@@ -122,7 +122,7 @@ final class FrameCapture {
         guard status == kCVReturnSuccess, let pb = pixelBuffer?.takeRetainedValue() else { return }
 
         frameCount += 1
-        let timestamp = CMTime(value: CMTimeValue(frameCount), timescale: 120)
+        let timestamp = CMTime(value: CMTimeValue(frameCount), timescale: 60)
         onFrame?(pb, timestamp)
     }
 
