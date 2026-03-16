@@ -1,0 +1,16 @@
+{
+  "name": "sim-stream",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build:swift": "cd packages/swift-helper && ./build.sh",
+    "build": "bun run build:swift && bun run --filter '*' build",
+    "dev:web": "cd apps/web && bun run dev",
+    "dev:cli": "cd apps/cli && bun run dev",
+    "test": "bun test",
+    "test:e2e": "cd apps/web && bunx playwright test"
+  }
+}

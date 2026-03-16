@@ -1,0 +1,19 @@
+{
+  "name": "sim-stream-cli",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "sim-stream": "src/index.ts"
+  },
+  "scripts": {
+    "build": "bun build src/index.ts --outdir dist --target bun",
+    "dev": "bun run src/index.ts"
+  },
+  "dependencies": {
+    "@sim-stream/server": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.7.0"
+  }
+}
