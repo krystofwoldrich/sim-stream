@@ -1,5 +1,5 @@
 import { useCallback, type CSSProperties, type MouseEvent } from "react";
-import { useWebRTC } from "./useWebRTC.js";
+import { useWebSocketStream } from "./useWebSocketStream.js";
 
 export interface SimulatorStreamProps {
   url: string;
@@ -13,26 +13,21 @@ export function SimulatorStream({
   style,
   className,
 }: SimulatorStreamProps) {
-  const { videoRef, dataChannelRef, connected, error, screenSize } = useWebRTC({
-    url,
-  });
+  const { canvasRef, sendTouch, connected, error, screenSize, fps } =
+    useWebSocketStream({ url });
 
-  const sendTouch = useCallback(
-    (type: "begin" | "move" | "end", event: MouseEvent<HTMLVideoElement>) => {
-      const dc = dataChannelRef.current;
-      if (!dc || dc.readyState !== "open") return;
+  const handleTouch = useCallback(
+    (type: "begin" | "move" | "end", event: MouseEvent<HTMLCanvasElement>) => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
 
-      const video = videoRef.current;
-      if (!video) return;
-
-      const rect = video.getBoundingClientRect();
-      // Normalize coordinates to 0..1
+      const rect = canvas.getBoundingClientRect();
       const x = (event.clientX - rect.left) / rect.width;
       const y = (event.clientY - rect.top) / rect.height;
 
-      dc.send(JSON.stringify({ type, x, y }));
+      sendTouch({ type, x, y });
     },
-    [dataChannelRef, videoRef],
+    [canvasRef, sendTouch],
   );
 
   const aspectRatio =
@@ -47,18 +42,15 @@ export function SimulatorStream({
       }}
       className={className}
     >
-      <video
-        ref={videoRef}
-        autoPlay
-        playsInline
-        muted
-        onMouseDown={(e) => sendTouch("begin", e)}
+      <canvas
+        ref={canvasRef}
+        onMouseDown={(e) => handleTouch("begin", e)}
         onMouseMove={(e) => {
-          if (e.buttons > 0) sendTouch("move", e);
+          if (e.buttons > 0) handleTouch("move", e);
         }}
-        onMouseUp={(e) => sendTouch("end", e)}
+        onMouseUp={(e) => handleTouch("end", e)}
         onMouseLeave={(e) => {
-          if (e.buttons > 0) sendTouch("end", e);
+          if (e.buttons > 0) handleTouch("end", e);
         }}
         style={{
           width: "100%",
@@ -70,6 +62,24 @@ export function SimulatorStream({
           borderRadius: 12,
         }}
       />
+      {connected && (
+        <div
+          style={{
+            position: "absolute",
+            top: 8,
+            right: 8,
+            padding: "2px 8px",
+            background: "rgba(0,0,0,0.6)",
+            color: fps > 0 ? "#4f4" : "#888",
+            fontSize: 12,
+            fontFamily: "monospace",
+            borderRadius: 6,
+            pointerEvents: "none",
+          }}
+        >
+          {fps} fps
+        </div>
+      )}
       {!connected && !error && (
         <div
           style={{
