@@ -19,7 +19,7 @@ export function App() {
       <SimulatorStream
         url={SERVER_URL}
         device="default"
-        style={{ height: "80vh", maxWidth: "40vh" }}
+        style={{ width: "min(37vh, 90vw)" }}
       />
     </div>
   );

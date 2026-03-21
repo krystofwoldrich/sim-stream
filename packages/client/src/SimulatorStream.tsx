@@ -36,86 +36,79 @@ export function SimulatorStream({
   return (
     <div
       style={{
-        position: "relative",
-        display: "inline-block",
+        display: "inline-flex",
+        flexDirection: "column",
+        border: "1px solid rgba(255,255,255,0.12)",
         ...style,
       }}
       className={className}
     >
-      <canvas
-        ref={canvasRef}
-        onMouseDown={(e) => handleTouch("begin", e)}
-        onMouseMove={(e) => {
-          if (e.buttons > 0) handleTouch("move", e);
-        }}
-        onMouseUp={(e) => handleTouch("end", e)}
-        onMouseLeave={(e) => {
-          if (e.buttons > 0) handleTouch("end", e);
-        }}
+      <div style={{ position: "relative" }}>
+        <canvas
+          ref={canvasRef}
+          onMouseDown={(e) => handleTouch("begin", e)}
+          onMouseMove={(e) => {
+            if (e.buttons > 0) handleTouch("move", e);
+          }}
+          onMouseUp={(e) => handleTouch("end", e)}
+          onMouseLeave={(e) => {
+            if (e.buttons > 0) handleTouch("end", e);
+          }}
+          style={{
+            width: "100%",
+            aspectRatio,
+            cursor: "pointer",
+            display: "block",
+          }}
+        />
+        {!connected && !error && (
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "#888",
+              fontSize: 14,
+              background: "rgba(0,0,0,0.8)",
+            }}
+          >
+            Connecting...
+          </div>
+        )}
+        {error && (
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "#f44",
+              fontSize: 14,
+              background: "rgba(0,0,0,0.8)",
+              padding: 20,
+              textAlign: "center",
+            }}
+          >
+            {error}
+          </div>
+        )}
+      </div>
+      <div
         style={{
-          width: "100%",
-          height: "100%",
-          objectFit: "contain",
-          aspectRatio,
-          cursor: "pointer",
-          background: "#000",
-          borderRadius: 12,
+          display: "flex",
+          justifyContent: "flex-end",
+          padding: "4px 8px",
+          borderTop: "1px solid rgba(255,255,255,0.12)",
+          color: fps > 0 ? "#4f4" : "#888",
+          fontSize: 12,
+          fontFamily: "monospace",
         }}
-      />
-      {connected && (
-        <div
-          style={{
-            position: "absolute",
-            top: 8,
-            right: 8,
-            padding: "2px 8px",
-            background: "rgba(0,0,0,0.6)",
-            color: fps > 0 ? "#4f4" : "#888",
-            fontSize: 12,
-            fontFamily: "monospace",
-            borderRadius: 6,
-            pointerEvents: "none",
-          }}
-        >
-          {fps} fps
-        </div>
-      )}
-      {!connected && !error && (
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            color: "#888",
-            fontSize: 14,
-            background: "rgba(0,0,0,0.8)",
-            borderRadius: 12,
-          }}
-        >
-          Connecting...
-        </div>
-      )}
-      {error && (
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            color: "#f44",
-            fontSize: 14,
-            background: "rgba(0,0,0,0.8)",
-            borderRadius: 12,
-            padding: 20,
-            textAlign: "center",
-          }}
-        >
-          {error}
-        </div>
-      )}
+      >
+        {fps} fps
+      </div>
     </div>
   );
 }
