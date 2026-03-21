@@ -92,31 +92,41 @@ export function useWebSocketStream({
       setConnected(false);
     };
 
-    // FPS counter: count img repaints via a polling check on naturalWidth changes
-    // For MJPEG, we use requestAnimationFrame to detect visual updates
-    let lastFrameTime = 0;
-    let rafId: number;
+    // FPS counter: fetch the MJPEG stream separately to count boundary markers
+    const fpsAbort = new AbortController();
     fpsIntervalRef.current = setInterval(() => {
       setFps(frameCountRef.current);
       frameCountRef.current = 0;
     }, 1000);
 
-    function checkFrame() {
-      rafId = requestAnimationFrame(checkFrame);
-      const img = imgRef.current;
-      if (!img || !img.complete || img.naturalWidth === 0) return;
-      // MJPEG streams update the img src continuously;
-      // count each animation frame where the image is loaded as a rendered frame
-      const now = performance.now();
-      if (now !== lastFrameTime) {
-        frameCountRef.current++;
-        lastFrameTime = now;
+    (async () => {
+      try {
+        const res = await fetch(`${url}/stream.mjpeg`, { signal: fpsAbort.signal });
+        const reader = res.body?.getReader();
+        if (!reader) return;
+
+        const boundary = new TextEncoder().encode("--frame");
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          // Count boundary occurrences in this chunk
+          if (value) {
+            for (let i = 0; i <= value.length - boundary.length; i++) {
+              let match = true;
+              for (let j = 0; j < boundary.length; j++) {
+                if (value[i + j] !== boundary[j]) { match = false; break; }
+              }
+              if (match) frameCountRef.current++;
+            }
+          }
+        }
+      } catch {
+        // aborted on cleanup
       }
-    }
-    rafId = requestAnimationFrame(checkFrame);
+    })();
 
     return () => {
-      cancelAnimationFrame(rafId);
+      fpsAbort.abort();
       if (fpsIntervalRef.current) clearInterval(fpsIntervalRef.current);
       ws.close();
       wsRef.current = null;
