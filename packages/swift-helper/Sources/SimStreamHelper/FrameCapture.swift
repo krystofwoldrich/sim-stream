@@ -20,6 +20,7 @@ final class FrameCapture {
     private var idleTimer: DispatchSourceTimer?
     private let captureQueue = DispatchQueue(label: "frame-capture", qos: .userInteractive)
     private var lastCaptureTimeMs: UInt64 = 0
+    private var lastSeed: UInt32 = 0
     private static let idleIntervalMs: UInt64 = 200
 
     private var descriptor: NSObject?
@@ -145,6 +146,11 @@ final class FrameCapture {
         let surfSel = NSSelectorFromString("framebufferSurface")
         guard let surfObj = desc.perform(surfSel)?.takeUnretainedValue() else { return }
         let surface = unsafeBitCast(surfObj, to: IOSurface.self)
+
+        // Skip encoding if the surface hasn't changed
+        let seed = IOSurfaceGetSeed(surface)
+        if seed == lastSeed { return }
+        lastSeed = seed
 
         let w = IOSurfaceGetWidth(surface)
         let h = IOSurfaceGetHeight(surface)

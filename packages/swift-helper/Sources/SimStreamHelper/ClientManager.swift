@@ -1,43 +1,23 @@
 import Foundation
 import Swifter
 
-/// Manages WebSocket clients and broadcasts video frames.
+/// Manages WebSocket clients for input and MJPEG stream clients for video.
 final class ClientManager {
-    private var sessions: [ObjectIdentifier: WebSocketSession] = [:]
+    private var wsSessions: [ObjectIdentifier: WebSocketSession] = [:]
     private let queue = DispatchQueue(label: "client-manager")
 
-    private var sps: Data?
-    private var pps: Data?
-    private var codecString: String?
-    private var screenWidth = 0
-    private var screenHeight = 0
-    private var fps = 60
-    private var frameTimestamp: UInt64 = 0
-    private var lastKeyFrameMessage: Data?
+    private(set) var screenWidth = 0
+    private(set) var screenHeight = 0
+
+    /// Latest JPEG frame data, replaced on each new frame
+    private var latestFrame: Data?
+    private var mjpegClients: [ObjectIdentifier: MJPEGClient] = [:]
+    private var nextClientId = 0
 
     var onTouch: ((TouchEventPayload) -> Void)?
     var onButton: ((String) -> Void)?
 
-    private static let startCode = Data([0x00, 0x00, 0x00, 0x01])
-
     // MARK: - Configuration
-
-    func setSPS(_ data: Data) {
-        queue.async {
-            self.sps = data
-            if data.count >= 4 {
-                let profile = String(format: "%02x", data[1])
-                let compat = String(format: "%02x", data[2])
-                let level = String(format: "%02x", data[3])
-                self.codecString = "avc1.\(profile)\(compat)\(level)"
-                print("[clients] Codec string: \(self.codecString!)")
-            }
-        }
-    }
-
-    func setPPS(_ data: Data) {
-        queue.async { self.pps = data }
-    }
 
     func setScreenSize(width: Int, height: Int) {
         queue.async {
@@ -46,44 +26,46 @@ final class ClientManager {
         }
     }
 
-    func setFps(_ fps: Int) {
-        queue.async { self.fps = fps }
-    }
+    // MARK: - MJPEG Client Management
 
-    func getScreenSize() -> (width: Int, height: Int) {
-        return (screenWidth, screenHeight)
-    }
-
-    // MARK: - Client Management
-
-    func addClient(_ session: WebSocketSession) {
-        let id = ObjectIdentifier(session)
+    func addMJPEGClient() -> MJPEGClient {
+        let client = MJPEGClient(id: nextClientId)
+        nextClientId += 1
+        let key = ObjectIdentifier(client)
         queue.async {
-            self.sessions[id] = session
-            print("[clients] Connected (\(self.sessions.count) total)")
-
-            // Send config
-            if self.screenWidth > 0, let codec = self.codecString {
-                let config = """
-                {"type":"config","width":\(self.screenWidth),"height":\(self.screenHeight),"codec":"\(codec)"}
-                """
-                var msg = Data([0x01])
-                msg.append(Data(config.utf8))
-                session.writeBinary([UInt8](msg))
+            self.mjpegClients[key] = client
+            print("[clients] MJPEG client connected (\(self.mjpegClients.count) total)")
+            // Send latest frame immediately if available
+            if let frame = self.latestFrame {
+                client.send(frame: frame)
             }
+        }
+        return client
+    }
 
-            // Send last keyframe for late joiners
-            if let keyframe = self.lastKeyFrameMessage {
-                session.writeBinary([UInt8](keyframe))
-            }
+    func removeMJPEGClient(_ client: MJPEGClient) {
+        let key = ObjectIdentifier(client)
+        queue.async {
+            self.mjpegClients.removeValue(forKey: key)
+            print("[clients] MJPEG client disconnected (\(self.mjpegClients.count) total)")
         }
     }
 
-    func removeClient(_ session: WebSocketSession) {
+    // MARK: - WebSocket Client Management (input only)
+
+    func addWSClient(_ session: WebSocketSession) {
         let id = ObjectIdentifier(session)
         queue.async {
-            self.sessions.removeValue(forKey: id)
-            print("[clients] Disconnected (\(self.sessions.count) total)")
+            self.wsSessions[id] = session
+            print("[clients] WS input client connected (\(self.wsSessions.count) total)")
+        }
+    }
+
+    func removeWSClient(_ session: WebSocketSession) {
+        let id = ObjectIdentifier(session)
+        queue.async {
+            self.wsSessions.removeValue(forKey: id)
+            print("[clients] WS input client disconnected (\(self.wsSessions.count) total)")
         }
     }
 
@@ -104,49 +86,56 @@ final class ClientManager {
 
     // MARK: - Frame Broadcasting
 
-    func broadcastFrame(annexBData: Data, isKeyFrame: Bool) {
+    func broadcastFrame(jpegData: Data) {
         queue.async {
-            let timestampUs = self.frameTimestamp
-            self.frameTimestamp += UInt64(1_000_000 / self.fps)
-
-            // Build frame payload
-            var framePayload: Data
-            if isKeyFrame, let sps = self.sps, let pps = self.pps {
-                framePayload = Data()
-                framePayload.append(Self.startCode)
-                framePayload.append(sps)
-                framePayload.append(Self.startCode)
-                framePayload.append(pps)
-                framePayload.append(annexBData)
-            } else {
-                framePayload = annexBData
-            }
-
-            // Header: [type:u8][keyframe:u8][timestamp:u64BE]
-            var message = Data(capacity: 10 + framePayload.count)
-            message.append(0x02)
-            message.append(isKeyFrame ? 1 : 0)
-            var ts = timestampUs.bigEndian
-            message.append(Data(bytes: &ts, count: 8))
-            message.append(framePayload)
-
-            // Store keyframe for late joiners
-            if isKeyFrame {
-                self.lastKeyFrameMessage = message
-            }
-
-            guard !self.sessions.isEmpty else { return }
-
-            let bytes = [UInt8](message)
-            for (_, session) in self.sessions {
-                session.writeBinary(bytes)
+            self.latestFrame = jpegData
+            guard !self.mjpegClients.isEmpty else { return }
+            for (_, client) in self.mjpegClients {
+                client.send(frame: jpegData)
             }
         }
     }
 
     func stop() {
         queue.async {
-            self.sessions.removeAll()
+            for (_, client) in self.mjpegClients {
+                client.close()
+            }
+            self.mjpegClients.removeAll()
+            self.wsSessions.removeAll()
         }
+    }
+}
+
+/// Represents a single MJPEG streaming client with a continuation-based writer.
+final class MJPEGClient {
+    let id: Int
+    private var writer: ((Data) -> Bool)?
+    private let boundary = "frame"
+    private var closed = false
+
+    init(id: Int) {
+        self.id = id
+    }
+
+    func setWriter(_ writer: @escaping (Data) -> Bool) {
+        self.writer = writer
+    }
+
+    func send(frame jpegData: Data) {
+        guard !closed, let writer = writer else { return }
+        var chunk = Data()
+        let header = "--\(boundary)\r\nContent-Type: image/jpeg\r\nContent-Length: \(jpegData.count)\r\n\r\n"
+        chunk.append(Data(header.utf8))
+        chunk.append(jpegData)
+        chunk.append(Data("\r\n".utf8))
+        if !writer(chunk) {
+            closed = true
+        }
+    }
+
+    func close() {
+        closed = true
+        writer = nil
     }
 }

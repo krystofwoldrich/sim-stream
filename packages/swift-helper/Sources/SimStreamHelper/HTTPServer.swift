@@ -2,7 +2,7 @@ import Foundation
 import Swifter
 
 /// HTTP + WebSocket server using Swifter library.
-/// Handles WebSocket on /ws, JSON endpoints, and CORS.
+/// Serves MJPEG stream on /stream.mjpeg, WebSocket on /ws for input.
 final class HTTPServer {
     let clientManager = ClientManager()
     private let server = HttpServer()
@@ -13,23 +13,55 @@ final class HTTPServer {
     }
 
     func start() throws {
-        // WebSocket endpoint
+        // MJPEG stream endpoint
+        server["/stream.mjpeg"] = { [weak self] request in
+            guard let self else { return .notFound }
+
+            let client = self.clientManager.addMJPEGClient()
+
+            return .raw(200, "OK", [
+                "Content-Type": "multipart/x-mixed-replace; boundary=frame",
+                "Cache-Control": "no-cache, no-store",
+                "Connection": "keep-alive",
+                "Access-Control-Allow-Origin": "*",
+            ]) { writer in
+                let semaphore = DispatchSemaphore(value: 0)
+
+                client.setWriter { data in
+                    do {
+                        try writer.write(data)
+                        return true
+                    } catch {
+                        semaphore.signal()
+                        return false
+                    }
+                }
+
+                // Block until the client disconnects
+                semaphore.wait()
+                self.clientManager.removeMJPEGClient(client)
+            }
+        }
+
+        // WebSocket endpoint (input only)
         server["/ws"] = websocket(
             binary: { [weak self] session, data in
                 self?.clientManager.handleMessage(from: session, data: Data(data))
             },
             connected: { [weak self] session in
-                self?.clientManager.addClient(session)
+                self?.clientManager.addWSClient(session)
             },
             disconnected: { [weak self] session in
-                self?.clientManager.removeClient(session)
+                self?.clientManager.removeWSClient(session)
             }
         )
 
         // Config endpoint
         server["/config"] = { [weak self] request in
-            let size = self?.clientManager.getScreenSize() ?? (width: 0, height: 0)
-            return .ok(.json(["width": size.width, "height": size.height] as AnyObject))
+            let size = self?.clientManager ?? nil
+            let w = size?.screenWidth ?? 0
+            let h = size?.screenHeight ?? 0
+            return HttpResponse.ok(.json(["width": w, "height": h] as AnyObject))
         }
 
         // Health endpoint

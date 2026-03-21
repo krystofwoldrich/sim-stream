@@ -13,7 +13,7 @@ export function SimulatorStream({
   style,
   className,
 }: SimulatorStreamProps) {
-  const { canvasRef, sendTouch, sendButton, connected, error, screenSize, fps } =
+  const { imgRef, sendTouch, sendButton, connected, error, screenSize, fps, streamUrl } =
     useWebSocketStream({ url });
 
   const lastHomeClickRef = useRef(0);
@@ -33,17 +33,17 @@ export function SimulatorStream({
   }, [sendButton]);
 
   const handleTouch = useCallback(
-    (type: "begin" | "move" | "end", event: MouseEvent<HTMLCanvasElement>) => {
-      const canvas = canvasRef.current;
-      if (!canvas) return;
+    (type: "begin" | "move" | "end", event: MouseEvent<HTMLImageElement>) => {
+      const img = imgRef.current;
+      if (!img) return;
 
-      const rect = canvas.getBoundingClientRect();
+      const rect = img.getBoundingClientRect();
       const x = (event.clientX - rect.left) / rect.width;
       const y = (event.clientY - rect.top) / rect.height;
 
       sendTouch({ type, x, y });
     },
-    [canvasRef, sendTouch],
+    [imgRef, sendTouch],
   );
 
   const aspectRatio =
@@ -60,9 +60,11 @@ export function SimulatorStream({
       className={className}
     >
       <div style={{ position: "relative" }}>
-        <canvas
-          ref={canvasRef}
-          onMouseDown={(e) => handleTouch("begin", e)}
+        <img
+          ref={imgRef}
+          src={streamUrl}
+          draggable={false}
+          onMouseDown={(e) => { e.preventDefault(); handleTouch("begin", e); }}
           onMouseMove={(e) => {
             if (e.buttons > 0) handleTouch("move", e);
           }}
@@ -75,6 +77,7 @@ export function SimulatorStream({
             aspectRatio,
             cursor: "pointer",
             display: "block",
+            objectFit: "contain",
           }}
         />
         {!connected && !error && (

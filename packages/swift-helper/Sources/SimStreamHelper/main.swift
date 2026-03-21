@@ -32,12 +32,14 @@ print("[main] Port: \(port)")
 
 let httpServer = HTTPServer(port: port)
 let frameCapture = FrameCapture()
-let videoEncoder = VideoEncoder()
+let videoEncoder = VideoEncoder(quality: 0.7)
 let hidInjector = HIDInjector()
+let encodeQueue = DispatchQueue(label: "encode", qos: .userInteractive)
 
 var screenWidth = 0
 var screenHeight = 0
 var encoderReady = false
+var encoding = false // backpressure flag
 
 // Setup HID injector
 do {
@@ -76,33 +78,28 @@ do {
             print("[main] Frame dimensions: \(w)x\(h), (re)initializing encoder")
 
             videoEncoder.stop()
-            do {
-                try videoEncoder.setup(
-                    width: Int32(w),
-                    height: Int32(h),
-                    fps: 60,
-                    onParameterSets: { sps, pps in
-                        httpServer.clientManager.setSPS(sps)
-                        httpServer.clientManager.setPPS(pps)
-                        print("[encoder] Sent SPS (\(sps.count) bytes) and PPS (\(pps.count) bytes)")
-                    },
-                    onEncodedFrame: { data, isKeyFrame in
-                        httpServer.clientManager.broadcastFrame(annexBData: data, isKeyFrame: isKeyFrame)
-                    }
-                )
-                encoderReady = true
-                print("[encoder] VideoToolbox encoder ready at \(w)x\(h)")
+            videoEncoder.setup(
+                width: Int32(w),
+                height: Int32(h),
+                fps: 60,
+                onEncodedFrame: { jpegData in
+                    httpServer.clientManager.broadcastFrame(jpegData: jpegData)
+                }
+            )
+            encoderReady = true
 
-                // Update client manager config
-                httpServer.clientManager.setScreenSize(width: w, height: h)
-                httpServer.clientManager.setFps(60)
-            } catch {
-                print("[encoder] Setup failed: \(error.localizedDescription)")
-            }
+            // Update client manager config
+            httpServer.clientManager.setScreenSize(width: w, height: h)
         }
 
         if encoderReady {
-            videoEncoder.encode(pixelBuffer: pixelBuffer, timestamp: timestamp)
+            // Backpressure: skip frame if encoder is still working on the previous one
+            guard !encoding else { return }
+            encoding = true
+            encodeQueue.async {
+                videoEncoder.encode(pixelBuffer: pixelBuffer)
+                encoding = false
+            }
         }
     }
 
