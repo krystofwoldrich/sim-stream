@@ -6,6 +6,7 @@ export enum MessageType {
   SPS = 0x04,
   PPS = 0x05,
   KeyFrame = 0x06,
+  ButtonEvent = 0x07,
 }
 
 export interface TouchEventPayload {

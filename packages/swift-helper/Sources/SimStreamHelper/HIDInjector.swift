@@ -16,6 +16,10 @@ final class HIDInjector {
     ) -> UnsafeMutableRawPointer?
     private var mouseFunc: IndigoMouseFunc?
 
+    // IndigoHIDMessageForButton(uint32 buttonType, int32 eventType) -> IndigoMessage*
+    private typealias IndigoButtonFunc = @convention(c) (UInt32, Int32) -> UnsafeMutableRawPointer?
+    private var buttonFunc: IndigoButtonFunc?
+
     // Struct sizes (current Xcode — payload stride is 0xa0)
     private let payloadStride = 0xa0       // sizeof(IndigoPayload)
     private let headerSize = 0x20          // Mach header (0x18) + innerSize (4) + eventType (4)
@@ -36,6 +40,13 @@ final class HIDInjector {
                           userInfo: [NSLocalizedDescriptionKey: "IndigoHIDMessageForMouseNSEvent not found"])
         }
         self.mouseFunc = unsafeBitCast(funcPtr, to: IndigoMouseFunc.self)
+
+        if let buttonPtr = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "IndigoHIDMessageForButton") {
+            self.buttonFunc = unsafeBitCast(buttonPtr, to: IndigoButtonFunc.self)
+            print("[hid] IndigoHIDMessageForButton loaded")
+        } else {
+            print("[hid] Warning: IndigoHIDMessageForButton not found")
+        }
 
         guard let hidClass = NSClassFromString("_TtC12SimulatorKit24SimDeviceLegacyHIDClient") else {
             throw NSError(domain: "HIDInjector", code: 2,
@@ -130,5 +141,20 @@ final class HIDInjector {
         }
         let sendFunc = unsafeBitCast(sendIMP, to: SendFunc.self)
         sendFunc(client, sendSel, msg, ObjCBool(true), nil, nil)
+    }
+
+    func sendButton(button: String, deviceUDID: String) {
+        print("[hid] Sending button: \(button)")
+
+        switch button {
+        case "home":
+            // Use simctl to go home — HID button injection crashes SpringBoard
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
+            process.arguments = ["simctl", "launch", deviceUDID, "com.apple.springboard"]
+            try? process.run()
+        default:
+            print("[hid] Unknown button: \(button)")
+        }
     }
 }

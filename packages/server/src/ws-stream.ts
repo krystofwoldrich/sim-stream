@@ -5,6 +5,7 @@ import type { TouchEventPayload } from "./protocol.js";
 const WS_MSG_CONFIG = 0x01;
 const WS_MSG_VIDEO_FRAME = 0x02;
 const WS_MSG_TOUCH = 0x03;
+const WS_MSG_BUTTON = 0x04;
 
 const ANNEX_B_START_CODE = Buffer.from([0x00, 0x00, 0x00, 0x01]);
 const MAX_BUFFERED_AMOUNT = 1024 * 1024; // 1MB backpressure threshold
@@ -24,9 +25,14 @@ export class WebSocketManager {
   private fps = 60;
   private lastKeyFrameMessage: Buffer | null = null;
   private onTouch: ((touch: TouchEventPayload) => void) | null = null;
+  private onButton: ((button: string) => void) | null = null;
 
   setTouchHandler(handler: (touch: TouchEventPayload) => void): void {
     this.onTouch = handler;
+  }
+
+  setButtonHandler(handler: (button: string) => void): void {
+    this.onButton = handler;
   }
 
   setSPS(sps: Buffer): void {
@@ -107,6 +113,14 @@ export class WebSocketManager {
         this.onTouch?.(touch);
       } catch {
         // ignore malformed touch
+      }
+    } else if (type === WS_MSG_BUTTON) {
+      try {
+        const json = data.subarray(1).toString();
+        const { button } = JSON.parse(json) as { button: string };
+        this.onButton?.(button);
+      } catch {
+        // ignore malformed button
       }
     }
   }

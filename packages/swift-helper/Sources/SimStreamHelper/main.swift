@@ -49,6 +49,10 @@ do {
                 hidInjector.sendTouch(type: touch.type, x: touch.x, y: touch.y,
                                       screenWidth: screenWidth, screenHeight: screenHeight)
             }
+        case .buttonEvent:
+            if let btn = try? JSONDecoder().decode(ButtonEventPayload.self, from: payload) {
+                hidInjector.sendButton(button: btn.button, deviceUDID: deviceUDID)
+            }
         default:
             break
         }

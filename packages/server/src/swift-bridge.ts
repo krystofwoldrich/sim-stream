@@ -132,6 +132,13 @@ export class SwiftBridge {
     this.socket.write(msg);
   }
 
+  sendButton(button: string): void {
+    if (!this.socket) return;
+    const payload = Buffer.from(JSON.stringify({ button }));
+    const msg = encodeMessage(MessageType.ButtonEvent, payload);
+    this.socket.write(msg);
+  }
+
   stop(): void {
     this.socket?.destroy();
     this.process?.kill();

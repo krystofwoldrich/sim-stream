@@ -22,9 +22,12 @@ export class SimStreamServer {
   }
 
   async start(): Promise<void> {
-    // Setup touch handler → bridge
+    // Setup handlers
     this.wsManager.setTouchHandler((touch) => {
       this.bridge?.sendTouch(touch);
+    });
+    this.wsManager.setButtonHandler((button) => {
+      this.bridge?.sendButton(button);
     });
 
     // Start Swift helper bridge

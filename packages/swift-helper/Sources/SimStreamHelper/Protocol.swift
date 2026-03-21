@@ -8,12 +8,17 @@ enum MessageType: UInt8 {
     case sps = 0x04            // helper → client: H.264 SPS NALU
     case pps = 0x05            // helper → client: H.264 PPS NALU
     case keyFrame = 0x06       // helper → client: H.264 IDR (key) frame
+    case buttonEvent = 0x07    // client → helper: JSON button event
 }
 
 struct TouchEventPayload: Codable {
     let type: String  // "begin", "move", "end"
     let x: Double     // normalized 0..1
     let y: Double     // normalized 0..1
+}
+
+struct ButtonEventPayload: Codable {
+    let button: String  // "home"
 }
 
 struct ConfigPayload: Codable {

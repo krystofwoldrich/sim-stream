@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 const WS_MSG_CONFIG = 0x01;
 const WS_MSG_VIDEO_FRAME = 0x02;
 const WS_MSG_TOUCH = 0x03;
+const WS_MSG_BUTTON = 0x04;
 
 export interface UseWebSocketStreamOptions {
   url: string;
@@ -12,6 +13,7 @@ export interface UseWebSocketStreamOptions {
 export interface UseWebSocketStreamResult {
   canvasRef: React.RefObject<HTMLCanvasElement | null>;
   sendTouch: (touch: { type: "begin" | "move" | "end"; x: number; y: number }) => void;
+  sendButton: (button: string) => void;
   connected: boolean;
   error: string | null;
   screenSize: { width: number; height: number } | null;
@@ -47,6 +49,17 @@ export function useWebSocketStream({
     },
     [],
   );
+
+  const sendButton = useCallback((button: string) => {
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+
+    const json = new TextEncoder().encode(JSON.stringify({ button }));
+    const msg = new Uint8Array(1 + json.length);
+    msg[0] = WS_MSG_BUTTON;
+    msg.set(json, 1);
+    ws.send(msg);
+  }, []);
 
   useEffect(() => {
     if (typeof VideoDecoder === "undefined") {
@@ -208,5 +221,5 @@ export function useWebSocketStream({
     };
   }, [url]);
 
-  return { canvasRef, sendTouch, connected, error, screenSize, fps };
+  return { canvasRef, sendTouch, sendButton, connected, error, screenSize, fps };
 }

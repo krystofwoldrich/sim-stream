@@ -1,4 +1,4 @@
-import { useCallback, type CSSProperties, type MouseEvent } from "react";
+import { useCallback, useRef, type CSSProperties, type MouseEvent } from "react";
 import { useWebSocketStream } from "./useWebSocketStream.js";
 
 export interface SimulatorStreamProps {
@@ -13,8 +13,24 @@ export function SimulatorStream({
   style,
   className,
 }: SimulatorStreamProps) {
-  const { canvasRef, sendTouch, connected, error, screenSize, fps } =
+  const { canvasRef, sendTouch, sendButton, connected, error, screenSize, fps } =
     useWebSocketStream({ url });
+
+  const lastHomeClickRef = useRef(0);
+
+  const handleHomeClick = useCallback(() => {
+    const now = Date.now();
+    const timeSinceLast = now - lastHomeClickRef.current;
+    lastHomeClickRef.current = now;
+
+    if (timeSinceLast < 300) {
+      // Double-click: send two rapid home presses for app switcher
+      sendButton("home");
+      setTimeout(() => sendButton("home"), 50);
+    } else {
+      sendButton("home");
+    }
+  }, [sendButton]);
 
   const handleTouch = useCallback(
     (type: "begin" | "move" | "end", event: MouseEvent<HTMLCanvasElement>) => {
@@ -99,15 +115,36 @@ export function SimulatorStream({
       <div
         style={{
           display: "flex",
-          justifyContent: "flex-end",
+          alignItems: "center",
+          justifyContent: "space-between",
           padding: "4px 8px",
           borderTop: "1px solid rgba(255,255,255,0.12)",
-          color: fps > 0 ? "#4f4" : "#888",
-          fontSize: 12,
-          fontFamily: "monospace",
         }}
       >
-        {fps} fps
+        <button
+          onClick={handleHomeClick}
+          style={{
+            background: "none",
+            border: "1px solid rgba(255,255,255,0.2)",
+            color: "#aaa",
+            fontSize: 11,
+            fontFamily: "monospace",
+            padding: "2px 10px",
+            cursor: "pointer",
+            borderRadius: 4,
+          }}
+        >
+          Home
+        </button>
+        <span
+          style={{
+            color: fps > 0 ? "#4f4" : "#888",
+            fontSize: 12,
+            fontFamily: "monospace",
+          }}
+        >
+          {fps} fps
+        </span>
       </div>
     </div>
   );
