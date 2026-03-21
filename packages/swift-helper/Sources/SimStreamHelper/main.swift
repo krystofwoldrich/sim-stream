@@ -12,19 +12,25 @@ app.setActivationPolicy(.accessory)
 
 let args = CommandLine.arguments
 
-guard args.count >= 3 else {
-    fputs("Usage: sim-stream-helper <device-udid> <socket-path>\n", stderr)
+guard args.count >= 2 else {
+    fputs("Usage: sim-stream-helper <device-udid> [--port 3100]\n", stderr)
     exit(1)
 }
 
 let deviceUDID = args[1]
-let socketPath = args[2]
+var port: UInt16 = 3100
 
-print("[main] Starting sim-stream-helper (headless)")
+// Parse optional --port flag
+if let portIdx = args.firstIndex(of: "--port"), portIdx + 1 < args.count,
+   let p = UInt16(args[portIdx + 1]) {
+    port = p
+}
+
+print("[main] Starting sim-stream-helper")
 print("[main] Device UDID: \(deviceUDID)")
-print("[main] Socket path: \(socketPath)")
+print("[main] Port: \(port)")
 
-let socketServer = SocketServer(socketPath: socketPath)
+let httpServer = HTTPServer(port: port)
 let frameCapture = FrameCapture()
 let videoEncoder = VideoEncoder()
 let hidInjector = HIDInjector()
@@ -40,25 +46,20 @@ do {
     print("[main] Warning: HID setup failed: \(error.localizedDescription)")
 }
 
-// Start socket server
+// Wire client manager → HID injector
+httpServer.clientManager.onTouch = { touch in
+    hidInjector.sendTouch(type: touch.type, x: touch.x, y: touch.y,
+                          screenWidth: screenWidth, screenHeight: screenHeight)
+}
+httpServer.clientManager.onButton = { button in
+    hidInjector.sendButton(button: button, deviceUDID: deviceUDID)
+}
+
+// Start HTTP + WebSocket server
 do {
-    try socketServer.start { type, payload in
-        switch type {
-        case .touchEvent:
-            if let touch = try? JSONDecoder().decode(TouchEventPayload.self, from: payload) {
-                hidInjector.sendTouch(type: touch.type, x: touch.x, y: touch.y,
-                                      screenWidth: screenWidth, screenHeight: screenHeight)
-            }
-        case .buttonEvent:
-            if let btn = try? JSONDecoder().decode(ButtonEventPayload.self, from: payload) {
-                hidInjector.sendButton(button: btn.button, deviceUDID: deviceUDID)
-            }
-        default:
-            break
-        }
-    }
+    try httpServer.start()
 } catch {
-    print("[main] Failed to start socket server: \(error.localizedDescription)")
+    print("[main] Failed to start server: \(error.localizedDescription)")
     exit(1)
 }
 
@@ -81,23 +82,20 @@ do {
                     height: Int32(h),
                     fps: 60,
                     onParameterSets: { sps, pps in
-                        socketServer.broadcast(type: .sps, payload: sps)
-                        socketServer.broadcast(type: .pps, payload: pps)
+                        httpServer.clientManager.setSPS(sps)
+                        httpServer.clientManager.setPPS(pps)
                         print("[encoder] Sent SPS (\(sps.count) bytes) and PPS (\(pps.count) bytes)")
                     },
                     onEncodedFrame: { data, isKeyFrame in
-                        let type: MessageType = isKeyFrame ? .keyFrame : .h264Frame
-                        socketServer.broadcast(type: type, payload: data)
+                        httpServer.clientManager.broadcastFrame(annexBData: data, isKeyFrame: isKeyFrame)
                     }
                 )
                 encoderReady = true
                 print("[encoder] VideoToolbox encoder ready at \(w)x\(h)")
 
-                // Send config
-                let config = ConfigPayload(width: w, height: h, fps: 60)
-                if let configData = try? JSONEncoder().encode(config) {
-                    socketServer.broadcast(type: .config, payload: configData)
-                }
+                // Update client manager config
+                httpServer.clientManager.setScreenSize(width: w, height: h)
+                httpServer.clientManager.setFps(60)
             } catch {
                 print("[encoder] Setup failed: \(error.localizedDescription)")
             }
@@ -109,6 +107,8 @@ do {
     }
 
     print("[main] Capture started, waiting for frames...")
+    print("\nOpen your browser at: http://localhost:\(port)")
+    print("Press Ctrl+C to stop.\n")
 } catch {
     print("[main] Failed to start capture: \(error.localizedDescription)")
     exit(1)
@@ -119,14 +119,14 @@ signal(SIGINT) { _ in
     print("\n[main] Shutting down...")
     frameCapture.stop()
     videoEncoder.stop()
-    socketServer.stop()
+    httpServer.stop()
     exit(0)
 }
 
 signal(SIGTERM) { _ in
     frameCapture.stop()
     videoEncoder.stop()
-    socketServer.stop()
+    httpServer.stop()
     exit(0)
 }
 

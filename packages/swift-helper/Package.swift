@@ -4,9 +4,15 @@ import PackageDescription
 let package = Package(
     name: "SimStreamHelper",
     platforms: [.macOS(.v14)],
+    dependencies: [
+        .package(url: "https://github.com/httpswift/swifter.git", from: "1.5.0"),
+    ],
     targets: [
         .executableTarget(
             name: "sim-stream-helper",
+            dependencies: [
+                .product(name: "Swifter", package: "swifter"),
+            ],
             path: "Sources/SimStreamHelper",
             swiftSettings: [
                 .unsafeFlags([
@@ -22,7 +28,7 @@ let package = Package(
                     "-Xlinker", "-rpath", "-Xlinker", "/Applications/Xcode.app/Contents/Developer/Library/PrivateFrameworks",
                 ]),
                 .linkedFramework("CoreSimulator"),
-                .linkedFramework("SimulatorKit"), // Needed for HIDInjector
+                .linkedFramework("SimulatorKit"),
                 .linkedFramework("VideoToolbox"),
                 .linkedFramework("CoreMedia"),
                 .linkedFramework("CoreVideo"),
