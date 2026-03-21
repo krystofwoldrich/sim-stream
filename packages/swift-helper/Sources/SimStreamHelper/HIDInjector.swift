@@ -83,9 +83,9 @@ final class HIDInjector {
 
         let eventType: Int32
         switch type {
-        case "begin": eventType = 1  // ButtonEventTypeDown
-        case "move":  eventType = 1  // Continued press
-        case "end":   eventType = 2  // ButtonEventTypeUp
+        case "begin": eventType = 1  // NSEventTypeLeftMouseDown
+        case "move":  eventType = 6  // NSEventTypeLeftMouseDragged
+        case "end":   eventType = 2  // NSEventTypeLeftMouseUp
         default: return
         }
 
