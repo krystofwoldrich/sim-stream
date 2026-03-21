@@ -5,11 +5,11 @@ import CoreGraphics
 import IOSurface
 import ObjectiveC
 
-/// Headless simulator frame capture at 60fps via direct IOSurface access.
+/// Headless simulator frame capture via direct IOSurface access.
 ///
-/// Uses the CoreSimulator IO port descriptor's `framebufferSurface` property
-/// which returns a shared IOSurface representing the simulator's display.
-/// CVPixelBuffer is created zero-copy from the IOSurface for H.264 encoding.
+/// Polls IOSurface at 4ms intervals but only captures when the surface seed
+/// changes (new content). Falls back to 5fps idle capture to keep the stream
+/// alive for late-joining clients.
 ///
 /// Pipeline: IOSurface (shared memory) → CVPixelBuffer (zero-copy) → H.264 encode
 final class FrameCapture {
@@ -19,6 +19,10 @@ final class FrameCapture {
     private(set) var capturedHeight: Int = 0
     private var pollTimer: DispatchSourceTimer?
     private let captureQueue = DispatchQueue(label: "frame-capture", qos: .userInteractive)
+    private var lastSeed: UInt32 = 0
+    private var lastCaptureTimeMs: UInt64 = 0
+    // 200ms = 5fps idle floor (keeps keyframes flowing for late joiners)
+    private static let idleIntervalMs: UInt64 = 200
 
     // Keep references alive
     private var descriptor: NSObject?
@@ -83,16 +87,18 @@ final class FrameCapture {
         capturedHeight = IOSurfaceGetHeight(surface)
         print("[capture] Framebuffer: \(capturedWidth)x\(capturedHeight) (direct IOSurface, zero-copy)")
 
-        // Start 60fps polling timer
+        // High-frequency poll with seed-change detection + 5fps idle floor
+        lastSeed = IOSurfaceGetSeed(surface) &- 1 // force first frame capture
+        lastCaptureTimeMs = 0
         let timer = DispatchSource.makeTimerSource(queue: captureQueue)
-        timer.schedule(deadline: .now(), repeating: .milliseconds(16)) // ~60fps
+        timer.schedule(deadline: .now(), repeating: .milliseconds(4))
         timer.setEventHandler { [weak self] in
             self?.pollFrame()
         }
         timer.resume()
         self.pollTimer = timer
 
-        print("[capture] 60fps IOSurface capture started")
+        print("[capture] IOSurface capture started (4ms poll, seed-change + 5fps idle)")
     }
 
     private func pollFrame() {
@@ -101,6 +107,15 @@ final class FrameCapture {
         let surfSel = NSSelectorFromString("framebufferSurface")
         guard let surfObj = desc.perform(surfSel)?.takeUnretainedValue() else { return }
         let surface = unsafeBitCast(surfObj, to: IOSurface.self)
+
+        // Capture on seed change (new content) or at 5fps idle floor
+        let seed = IOSurfaceGetSeed(surface)
+        let nowMs = DispatchTime.now().uptimeNanoseconds / 1_000_000
+        let seedChanged = seed != lastSeed
+        let idleDue = (nowMs - lastCaptureTimeMs) >= Self.idleIntervalMs
+        guard seedChanged || idleDue else { return }
+        lastSeed = seed
+        lastCaptureTimeMs = nowMs
 
         let w = IOSurfaceGetWidth(surface)
         let h = IOSurfaceGetHeight(surface)

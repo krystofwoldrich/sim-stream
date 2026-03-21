@@ -112,8 +112,6 @@ export class WebSocketManager {
   }
 
   sendFrame(annexBData: Buffer, isKeyFrame: boolean): void {
-    if (this.clients.size === 0) return;
-
     // Timestamp in microseconds for WebCodecs
     const timestampUs = this.frameTimestamp;
     this.frameTimestamp += Math.round(1_000_000 / this.fps);
@@ -140,10 +138,12 @@ export class WebSocketManager {
 
     const message = Buffer.concat([header, framePayload]);
 
-    // Store last keyframe for late joiners
+    // Always store last keyframe (even with no clients yet)
     if (isKeyFrame) {
       this.lastKeyFrameMessage = message;
     }
+
+    if (this.clients.size === 0) return;
 
     // Broadcast to all clients with backpressure check
     for (const ws of this.clients) {
