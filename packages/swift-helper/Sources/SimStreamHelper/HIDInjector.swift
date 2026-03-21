@@ -16,8 +16,8 @@ final class HIDInjector {
     ) -> UnsafeMutableRawPointer?
     private var mouseFunc: IndigoMouseFunc?
 
-    // IndigoHIDMessageForButton(uint32 buttonType, int32 eventType) -> IndigoMessage*
-    private typealias IndigoButtonFunc = @convention(c) (UInt32, Int32) -> UnsafeMutableRawPointer?
+    // IndigoHIDMessageForButton(int eventSource, int direction, int target) -> IndigoMessage*
+    private typealias IndigoButtonFunc = @convention(c) (Int32, Int32, Int32) -> UnsafeMutableRawPointer?
     private var buttonFunc: IndigoButtonFunc?
 
     // Struct sizes (current Xcode — payload stride is 0xa0)
@@ -143,18 +143,80 @@ final class HIDInjector {
         sendFunc(client, sendSel, msg, ObjCBool(true), nil, nil)
     }
 
+    // MARK: - Button events
+
+    // idb eventSource constants (first arg to IndigoHIDMessageForButton)
+    private static let buttonSourceHome: Int32 = 0x0
+    private static let buttonSourceLock: Int32 = 0x1
+    private static let buttonSourceSideButton: Int32 = 0xbb8
+    private static let buttonSourceSiri: Int32 = 0x400002
+
+    // idb direction constants (second arg)
+    private static let buttonDown: Int32 = 1
+    private static let buttonUp: Int32 = 2
+
+    // idb target constant (third arg)
+    private static let buttonTargetHardware: Int32 = 0x33
+
+    private func sendHIDButton(eventSource: Int32, direction: Int32) {
+        guard let client = hidClient, let sendSel = sendSel, let buttonFunc = buttonFunc else { return }
+
+        // IndigoHIDMessageForButton returns a ready-to-send message
+        // idb uses it directly with malloc_size to determine length
+        guard let msg = buttonFunc(eventSource, direction, Self.buttonTargetHardware) else {
+            print("[hid] IndigoHIDMessageForButton returned nil")
+            return
+        }
+
+        // Send via SimDeviceLegacyHIDClient (freeWhenDone: true — runtime will free msg)
+        typealias SendFunc = @convention(c) (AnyObject, Selector, UnsafeMutableRawPointer, ObjCBool, AnyObject?, AnyObject?) -> Void
+        guard let sendIMP = class_getMethodImplementation(object_getClass(client)!, sendSel) else {
+            free(msg)
+            return
+        }
+        let sendFunc = unsafeBitCast(sendIMP, to: SendFunc.self)
+        sendFunc(client, sendSel, msg, ObjCBool(true), nil, nil)
+    }
+
+    private let buttonQueue = DispatchQueue(label: "hid-button")
+
     func sendButton(button: String, deviceUDID: String) {
         print("[hid] Sending button: \(button)")
 
         switch button {
         case "home":
-            // Use simctl to go home — HID button injection crashes SpringBoard
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
-            process.arguments = ["simctl", "launch", deviceUDID, "com.apple.springboard"]
-            try? process.run()
+            if buttonFunc != nil {
+                // Single home press via HID
+                sendHIDButton(eventSource: Self.buttonSourceHome, direction: Self.buttonDown)
+                sendHIDButton(eventSource: Self.buttonSourceHome, direction: Self.buttonUp)
+            } else {
+                // Fallback: simctl
+                launchSpringBoard(deviceUDID: deviceUDID)
+            }
+
+        case "app_switcher":
+            if buttonFunc != nil {
+                // Double home press with delay for app switcher
+                buttonQueue.async { [self] in
+                    sendHIDButton(eventSource: Self.buttonSourceHome, direction: Self.buttonDown)
+                    sendHIDButton(eventSource: Self.buttonSourceHome, direction: Self.buttonUp)
+                    Thread.sleep(forTimeInterval: 0.15)
+                    sendHIDButton(eventSource: Self.buttonSourceHome, direction: Self.buttonDown)
+                    sendHIDButton(eventSource: Self.buttonSourceHome, direction: Self.buttonUp)
+                }
+            } else {
+                print("[hid] App switcher not available (IndigoHIDMessageForButton not loaded)")
+            }
+
         default:
             print("[hid] Unknown button: \(button)")
         }
+    }
+
+    private func launchSpringBoard(deviceUDID: String) {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
+        process.arguments = ["simctl", "launch", deviceUDID, "com.apple.springboard"]
+        try? process.run()
     }
 }

@@ -18,17 +18,26 @@ export function SimulatorStream({
 
   const lastHomeClickRef = useRef(0);
 
+  const homeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const handleHomeClick = useCallback(() => {
     const now = Date.now();
     const timeSinceLast = now - lastHomeClickRef.current;
     lastHomeClickRef.current = now;
 
     if (timeSinceLast < 300) {
-      // Double-click: send two rapid home presses for app switcher
-      sendButton("home");
-      setTimeout(() => sendButton("home"), 50);
+      // Double-click: cancel pending single press, send app switcher
+      if (homeTimerRef.current) {
+        clearTimeout(homeTimerRef.current);
+        homeTimerRef.current = null;
+      }
+      sendButton("app_switcher");
     } else {
-      sendButton("home");
+      // Delay single press to detect potential double-click
+      homeTimerRef.current = setTimeout(() => {
+        sendButton("home");
+        homeTimerRef.current = null;
+      }, 300);
     }
   }, [sendButton]);
 
