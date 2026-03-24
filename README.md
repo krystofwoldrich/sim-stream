@@ -1,5 +1,7 @@
 # sim-stream
 
+> **Note:** This project is an AI-generated experiment and is not production-ready.
+
 Stream an iOS Simulator screen to the browser with touch input support.
 
 Built with Swift (server + HID injection) and React (client component). Uses MJPEG for low-latency video and WebSocket for input.
