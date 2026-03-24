@@ -4,31 +4,6 @@ Stream an iOS Simulator screen to the browser with touch input support.
 
 Built with Swift (server + HID injection) and React (client component). Uses MJPEG for low-latency video and WebSocket for input.
 
-## Packages
-
-| Package | Description |
-|---------|-------------|
-| `apps/cli` | CLI entry point (`sim-stream`) |
-| `apps/web` | Demo web app |
-| `packages/server` | HTTP/WebSocket server (Bun) |
-| `packages/client` | React `<SimulatorStream>` component |
-| `packages/swift-helper` | Native Swift binary for screen capture and HID input |
-
-## Quick Start
-
-```bash
-# Install dependencies
-bun install
-
-# Build the Swift helper + all packages
-bun run build
-
-# Start streaming (auto-detects booted simulator)
-bun run dev:cli
-```
-
-Open `http://localhost:3100` in your browser.
-
 ## CLI Usage
 
 ```bash
@@ -98,6 +73,31 @@ function CustomStream() {
   );
 }
 ```
+
+## Quick Start
+
+```bash
+# Install dependencies
+bun install
+
+# Build the Swift helper + all packages
+bun run build
+
+# Start streaming (auto-detects booted simulator)
+bun run dev:cli
+```
+
+Open `http://localhost:3100` in your browser.
+
+## Packages
+
+| Package | Description |
+|---------|-------------|
+| `apps/cli` | CLI entry point (`sim-stream`) |
+| `apps/web` | Demo web app |
+| `packages/server` | HTTP/WebSocket server (Bun) |
+| `packages/client` | React `<SimulatorStream>` component |
+| `packages/swift-helper` | Native Swift binary for screen capture and HID input |
 
 ## Development
 
